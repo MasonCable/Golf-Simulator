@@ -1,0 +1,21 @@
+[
+  {
+    "DeviceID":"YourLM",
+    "Units":"Yards",
+    "Club": "wedge",
+    "ShotNumber":1,
+    "BallData":{"Speed":88.5,"SpinAxis":0.0,"TotalSpin":8500,"HLA": 0.0,"VLA": 38},
+    "ClubData":{"Speed":104.5,"Path":1.2,"FaceToPath":-0.5,"AngleOfAttack":-3.1},
+    "ShotDataOptions":{"ContainsBallData":true,"ContainsClubData":true}
+  },
+  {
+    "DeviceID":"YourLM",
+    "Units":"Yards",
+    "Club": "Driver",
+    "ShotNumber":1,
+    "BallData":{"Speed":168.0,"SpinAxis":-3.0,"TotalSpin":2500,"HLA": -5.5,"VLA": 20.0},
+    "ClubData":{"Speed":104.5,"Path":1.2,"FaceToPath":-0.5,"AngleOfAttack":-3.1},
+    "ShotDataOptions":{"ContainsBallData":true,"ContainsClubData":true}
+  }
+
+]
