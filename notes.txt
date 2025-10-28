@@ -1,3 +1,4 @@
 TO DO (Not Important)
 1.) We need to allow the air density to be variable depending on the course.
 2.) We need to better calculate roll
+3.) Break apart the program into sections

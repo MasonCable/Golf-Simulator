@@ -1,21 +1,163 @@
 [
   {
-    "DeviceID":"YourLM",
-    "Units":"Yards",
-    "Club": "wedge",
-    "ShotNumber":1,
-    "BallData":{"Speed":88.5,"SpinAxis":0.0,"TotalSpin":8500,"HLA": 0.0,"VLA": 38},
-    "ClubData":{"Speed":104.5,"Path":1.2,"FaceToPath":-0.5,"AngleOfAttack":-3.1},
-    "ShotDataOptions":{"ContainsBallData":true,"ContainsClubData":true}
+    "DeviceID": "YourLM",
+    "Units": "Yards",
+    "Club": "driver",
+    "ShotNumber": 1,
+    "BallData": {
+      "Speed": 221.5,
+      "SpinAxis": -2.8,
+      "TotalSpin": 2200,
+      "HLA": -9,
+      "VLA": 1.5
+    },
+    "ClubData": {
+      "Speed": 113.5,
+      "Path": 1.1,
+      "FaceToPath": -1.9,
+      "AngleOfAttack": 3.2
+    },
+    "ShotDataOptions": {
+      "ContainsBallData": true,
+      "ContainsClubData": true
+    }
   },
   {
-    "DeviceID":"YourLM",
-    "Units":"Yards",
-    "Club": "Driver",
-    "ShotNumber":1,
-    "BallData":{"Speed":168.0,"SpinAxis":-3.0,"TotalSpin":2500,"HLA": -5.5,"VLA": 20.0},
-    "ClubData":{"Speed":104.5,"Path":1.2,"FaceToPath":-0.5,"AngleOfAttack":-3.1},
-    "ShotDataOptions":{"ContainsBallData":true,"ContainsClubData":true}
+    "DeviceID": "YourLM",
+    "Units": "Yards",
+    "Club": "3w",
+    "ShotNumber": 2,
+    "BallData": {
+      "Speed": 158.0,
+      "SpinAxis": -3.1,
+      "TotalSpin": 2950,
+      "HLA": -0.9,
+      "VLA": 12.5
+    },
+    "ClubData": {
+      "Speed": 105.0,
+      "Path": 1.4,
+      "FaceToPath": -2.3,
+      "AngleOfAttack": 2.8
+    },
+    "ShotDataOptions": {
+      "ContainsBallData": true,
+      "ContainsClubData": true
+    }
+  },
+  {
+    "DeviceID": "YourLM",
+    "Units": "Yards",
+    "Club": "5i",
+    "ShotNumber": 3,
+    "BallData": {
+      "Speed": 142.0,
+      "SpinAxis": -1.5,
+      "TotalSpin": 4800,
+      "HLA": -0.3,
+      "VLA": 16.2
+    },
+    "ClubData": {
+      "Speed": 92.5,
+      "Path": 0.8,
+      "FaceToPath": -1.1,
+      "AngleOfAttack": -2.1
+    },
+    "ShotDataOptions": {
+      "ContainsBallData": true,
+      "ContainsClubData": true
+    }
+  },
+  {
+    "DeviceID": "YourLM",
+    "Units": "Yards",
+    "Club": "7i",
+    "ShotNumber": 4,
+    "BallData": {
+      "Speed": 132.0,
+      "SpinAxis": -0.9,
+      "TotalSpin": 6200,
+      "HLA": 0.1,
+      "VLA": 18.5
+    },
+    "ClubData": {
+      "Speed": 85.0,
+      "Path": 0.5,
+      "FaceToPath": -0.8,
+      "AngleOfAttack": -3.4
+    },
+    "ShotDataOptions": {
+      "ContainsBallData": true,
+      "ContainsClubData": true
+    }
+  },
+  {
+    "DeviceID": "YourLM",
+    "Units": "Yards",
+    "Club": "9i",
+    "ShotNumber": 5,
+    "BallData": {
+      "Speed": 109.0,
+      "SpinAxis": 0.4,
+      "TotalSpin": 7800,
+      "HLA": 0.3,
+      "VLA": 20
+    },
+    "ClubData": {
+      "Speed": 78.0,
+      "Path": 0.2,
+      "FaceToPath": -0.4,
+      "AngleOfAttack": -4.5
+    },
+    "ShotDataOptions": {
+      "ContainsBallData": true,
+      "ContainsClubData": true
+    }
+  },
+  {
+    "DeviceID": "YourLM",
+    "Units": "Yards",
+    "Club": "10i",
+    "ShotNumber": 6,
+    "BallData": {
+      "Speed": 110.0,
+      "SpinAxis": 1.2,
+      "TotalSpin": 9200,
+      "HLA": 0.5,
+      "VLA": 25.8
+    },
+    "ClubData": {
+      "Speed": 73.0,
+      "Path": -0.1,
+      "FaceToPath": -0.2,
+      "AngleOfAttack": -5.1
+    },
+    "ShotDataOptions": {
+      "ContainsBallData": true,
+      "ContainsClubData": true
+    }
+  },
+  {
+    "DeviceID": "YourLM",
+    "Units": "Yards",
+    "Club": "sw",
+    "ShotNumber": 7,
+    "BallData": {
+      "Speed": 95.0,
+      "SpinAxis": 2.5,
+      "TotalSpin": 10500,
+      "HLA": 0.8,
+      "VLA": 30.2
+    },
+    "ClubData": {
+      "Speed": 66.0,
+      "Path": -0.5,
+      "FaceToPath": 0.3,
+      "AngleOfAttack": -6.0
+    },
+    "ShotDataOptions": {
+      "ContainsBallData": true,
+      "ContainsClubData": true
+    }
   }
-
 ]

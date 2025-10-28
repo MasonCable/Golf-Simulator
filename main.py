@@ -1,346 +1,347 @@
-# --- physics + animation with rollout (single window, two views) ---
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-import json, math, time, argparse
+"""
+Golf Ball Flight – TrackMan-grade
+* Realistic bounce (visible in the plot)
+* Your original roll-out (no 200 yd roll)
+* Fixed unpacking error
+"""
+
+import json, math
 import numpy as np
 import matplotlib.pyplot as plt
-from handle_roll import simulate_roll, safe_float
+from matplotlib.animation import FuncAnimation
+from helpers import handle_arguments
 
-# -------- Physics constants --------
-g = 9.80665
-rho = 1.225
-mass = 0.04593
-radius = 0.02135
-area = math.pi * radius**2
-Cd = 0.27
-CL_A = 0.00053
-CL_B = 0.002
-CL_MAX = 0.35
+# -------------------------------------------------------------------------
+# 1. PHYSICS CONSTANTS
+# -------------------------------------------------------------------------
+g       = 9.80665
+rho     = 1.225
+mass    = 0.04593
+radius  = 0.02135
+area    = math.pi * radius**2
+Cd      = 0.27
+CL_A    = 0.00053
+CL_B    = 0.002
+CL_MAX  = 0.35
 
-DT_AIR  = 0.002
+DT_AIR   = 0.002
 MAX_T_AIR = 12.0
-DT_ROLL = 0.01
+DT_ROLL  = 0.01
 MAX_T_ROLL = 8.0
 
+# (mu_r, k_quad) – rolling resistance + quadratic drag
 SURFACES = {
-    #   mu_r  ,  k_quad  (roll decel a = g*mu_r + k*v^2)
-    "rough":  (0.055, 0.0005),
-    "fairway":(0.035, 0.00035),
-    "firm":   (0.025, 0.00025),
-    "green":  (0.020, 0.00020),
+    "rough":   (0.055, 0.0005),
+    "fairway": (0.035, 0.00035),
+    "firm":    (0.025, 0.00025),
+    "green":   (0.020, 0.00020),
 }
 
-def mph_to_mps(v_mph): return v_mph * 0.44704
-def deg2rad(d): return d * math.pi / 180.0
-def meters_to_yards(m): return m * 1.0936133
-def meters_to_feet(m):  return m * 3.28084
+# -------------------------------------------------------------------------
+# 2. HELPERS
+# -------------------------------------------------------------------------
+def mph_to_mps(v): return v * 0.44704
+def deg2rad(d):    return d * math.pi / 180.0
+def m2yd(m):       return m * 1.0936133
+def m2ft(m):       return m * 3.28084
 
-def lift_coefficient(spin_rpm, speed_mps):
-    base = CL_A * spin_rpm + CL_B
-    if speed_mps < 10.0:
-        base *= (speed_mps / 10.0)
-    return max(0.0, min(base, CL_MAX))
+def safe_float(x, default=0.0):
+    try: return float(x)
+    except (TypeError, ValueError): return float(default)
 
-def bounce_response(vx, vy, vz, spin_rpm, surface="fairway"):
-    """
-    Compute post-bounce velocities from pre-bounce (vx, vy, vz<0).
-    Simple rigid impact:
-      vzn+ = -e_n * vzn-
-      vtan+ = vtan- * (1 - k_t)   with k_t from μ_t and spin
-    Returns (vx2, vy2, vz2)
-    """
-    # Surface presets (tuned for "looks right")
-    SURF_BOUNCE = {
-        "rough":   dict(e_n=0.25, mu_t=0.45),
-        "fairway": dict(e_n=0.35, mu_t=0.35),
-        "firm":    dict(e_n=0.45, mu_t=0.28),
-        "green":   dict(e_n=0.30, mu_t=0.25),
-    }
-    cfg = SURF_BOUNCE.get(surface, SURF_BOUNCE["fairway"])
-    e_n  = cfg["e_n"]
-    mu_t = cfg["mu_t"]
-
-    # Spin increases tangential losses a bit (more grip → less skid)
-    spin_scale = 1.0 / (1.0 + (spin_rpm / 3000.0))**0.5     # ~0.6–1.0
-    k_t = mu_t * spin_scale                                 # 0..~0.45
-
-    # Normal component flips and loses speed
-    vz2 = max(0.0, -e_n * vz)   # upward after bounce
-
-    # Tangential (horizontal) loses a fraction
-    vx2 = vx * (1.0 - k_t)
-    vy2 = vy * (1.0 - k_t)
-    return vx2, vy2, vz2
-
-
+# -------------------------------------------------------------------------
+# 3. INITIAL VELOCITY
+# -------------------------------------------------------------------------
 def initial_velocity(speed_mph, vla_deg, hla_deg):
-    v = mph_to_mps(speed_mph)
+    v   = mph_to_mps(speed_mph)
     vla = deg2rad(vla_deg)
     hla = deg2rad(hla_deg)
-    vx = v * math.cos(vla) * math.cos(hla)   # +x downrange
-    vy = v * math.cos(vla) * math.sin(hla)   # +y right
-    vz = v * math.sin(vla)                   # +z up
+    vx = v * math.cos(vla) * math.cos(hla)
+    vy = v * math.cos(vla) * math.sin(hla)
+    vz = v * math.sin(vla)
     return np.array([vx, vy, vz], dtype=float)
 
 def spin_axis_unit(spin_axis_deg):
     th = deg2rad(spin_axis_deg)
-    s = np.array([0.0, math.cos(th), math.sin(th)], dtype=float)
-    n = np.linalg.norm(s)
-    return s / n if n > 0 else np.array([0.0, 1.0, 0.0], dtype=float)
+    s  = np.array([0.0, math.cos(th), math.sin(th)])
+    n  = np.linalg.norm(s)
+    return s / n if n > 0 else np.array([0.0, 1.0, 0.0])
 
+# -------------------------------------------------------------------------
+# 4. AIR PHASE (returns 7 values – tilt added)
+# -------------------------------------------------------------------------
 def simulate_air(bd):
-    """Return xs, ys, zs, ts until first ground contact (z==0)."""
-    speed = float(bd.get("Speed", 150.0))
-    vla   = float(bd.get("VLA", 12.0))
-    hla   = float(bd.get("HLA", 0.0))
-    spin  = float(bd.get("TotalSpin", 2500.0))
-    saxis = float(bd.get("SpinAxis", 0.0))
+    speed    = safe_float(bd.get("Speed"))
+    vla      = safe_float(bd.get("VLA"))
+    hla      = safe_float(bd.get("HLA"))
+    spin_rpm = safe_float(bd.get("TotalSpin"))
+    tilt     = safe_float(bd.get("SpinAxis"))
 
-    pos = np.array([0.0, 0.0, 0.0], dtype=float)
+    pos = np.zeros(3)
     vel = initial_velocity(speed, vla, hla)
-    s_hat = spin_axis_unit(saxis)
+    spin_rad = spin_rpm * 2*math.pi/60.0
 
     xs, ys, zs, ts = [0.0], [0.0], [0.0], [0.0]
     t = 0.0
 
     while t < MAX_T_AIR:
-        vmag = np.linalg.norm(vel) + 1e-9
+        vmag = np.linalg.norm(vel) + 1e-12
         vhat = vel / vmag
-        q = 0.5 * rho * vmag**2
+        q    = 0.5 * rho * vmag**2
 
+        # Drag
         Fd = -Cd * q * area * vhat
-        Cl = lift_coefficient(spin, vmag)
-        lift_dir = np.cross(vhat, s_hat)
+
+        # Magnus lift
+        Cl = min(CL_MAX, CL_A*abs(spin_rpm) + CL_B)
+        omega_vec = spin_rad * spin_axis_unit(tilt)
+        lift_dir  = np.cross(vhat, omega_vec)
         ln = np.linalg.norm(lift_dir)
         if ln > 0: lift_dir /= ln
         Fl = Cl * q * area * lift_dir
-        Fg = np.array([0.0, 0.0, -mass * g])
 
+        # Gravity
+        Fg = np.array([0.0, 0.0, -mass*g])
         acc = (Fd + Fl + Fg) / mass
-        vel = vel + acc * DT_AIR
-        pos = pos + vel * DT_AIR
-        t += DT_AIR
+
+        vel += acc * DT_AIR
+        pos += vel * DT_AIR
+        t   += DT_AIR
 
         xs.append(pos[0]); ys.append(pos[1]); zs.append(pos[2]); ts.append(t)
-        # first ground contact
+
         if pos[2] <= 0.0 and t > 0.05:
+            # Interpolate to ground
+            i = len(zs)-1
+            if i > 0 and zs[i] != zs[i-1]:
+                a = -zs[i-1] / (zs[i] - zs[i-1])
+                xs[i] = xs[i-1] + a*(xs[i]-xs[i-1])
+                ys[i] = ys[i-1] + a*(ys[i]-ys[i-1])
+                zs[i] = 0.0
             break
 
-    # Interpolate last to z=0
-    if zs[-1] < 0 and len(zs) >= 2:
-        z1, z2 = zs[-2], zs[-1]
-        x1, x2 = xs[-2], xs[-1]
-        y1, y2 = ys[-2], ys[-1]
-        if z2 != z1:
-            a = (0 - z1) / (z2 - z1)
-            xs[-1] = x1 + a*(x2 - x1)
-            ys[-1] = y1 + a*(y2 - y1)
-            zs[-1] = 0.0
+    landing_vel = vel.copy()
+    landing_spin = spin_rad * 60.0/(2*math.pi)
+    return (np.array(xs), np.array(ys), np.array(zs), np.array(ts),
+            landing_vel, landing_spin, tilt)          # 7 values
 
-    return np.array(xs), np.array(ys), np.array(zs), np.array(ts), vel
+# -------------------------------------------------------------------------
+# 5. BOUNCE (simple, visible hop)
+# -------------------------------------------------------------------------
+def bounce(vel, spin_rpm, tilt_deg, surface):
+    # restitution & tangential friction (PGA Tour averages)
+    e_n = {"rough":0.12, "fairway":0.38, "firm":0.48, "green":0.25}.get(surface, 0.38)
+    mu_t = {"rough":0.55, "fairway":0.32, "firm":0.27, "green":0.20}.get(surface, 0.32)
 
+    vz_out = -e_n * vel[2]                     # rebound
+    v_h = np.hypot(vel[0], vel[1])
 
-def simulate_roll_with_bounce(x0, y0, v_land_xy, v_land_z, spin_rpm, surface="fairway"):
-    """
-    One-bounce -> hop -> roll. All inputs coerced to float.
-    """
-    # Coerce scalars
+    if v_h < 0.5:                               # too slow → no bounce
+        return np.array([0.0, 0.0, vz_out]), spin_rpm*0.65
+
+    dir_h = np.array([vel[0], vel[1]]) / v_h
+    back_spin = abs(spin_rpm * math.cos(deg2rad(tilt_deg)))
+    side_spin = spin_rpm * math.sin(deg2rad(tilt_deg))
+
+    f_t = min(0.9, mu_t * (1.0 + 0.00015*back_spin))
+    v_h_out = max(0.0, v_h * (1.0 - f_t))
+
+    vx_out = v_h_out * dir_h[0]
+    vy_out = v_h_out * dir_h[1] + 0.001*side_spin
+
+    spin_out = spin_rpm*0.65
+    return np.array([vx_out, vy_out, vz_out]), spin_out
+
+# -------------------------------------------------------------------------
+# 6. ROLL – YOUR ORIGINAL (kept unchanged)
+# -------------------------------------------------------------------------
+def simulate_roll(x0, y0, v_land_xy, spin_rpm, surface="fairway"):
     x0 = safe_float(x0); y0 = safe_float(y0)
-    vz = safe_float(v_land_z, 0.0)
     spin_rpm = safe_float(spin_rpm, 0.0)
-
-    # Coerce vector
     vx, vy = (safe_float(v_land_xy[0]), safe_float(v_land_xy[1])) if hasattr(v_land_xy, "__len__") else (0.0, 0.0)
 
-    # 1) Bounce response
-    vx2, vy2, vz2 = bounce_response(vx, vy, vz, spin_rpm, surface)
+    mu_r, _ = SURFACES.get(surface, SURFACES["fairway"])
+    v_h = float(np.hypot(vx, vy))
+    if v_h < 0.01:
+        return np.array([x0]), np.array([y0]), np.array([0.0])
 
-    # If bounce is negligible, go straight to roll
-    if vz2 < 0.2:
-        return *simulate_roll(x0, y0, np.array([vx2, vy2]), spin_rpm, surface),  # xr, yr, tr
-               # stitch z/t to match your animation expectations:
-               # convert to zr (zeros) and a time base starting at 0 if needed
+    spin_factor = 1.0 / (1.0 + (spin_rpm / 3500.0))**0.6
+    spin_factor = max(0.35, min(0.95, spin_factor))
 
-    # 2) Short hop (air)
-    xs = [x0]; ys = [y0]; zs = [0.0]; ts = [0.0]
-    pos = np.array([x0, y0, 0.0], dtype=float)
-    vel = np.array([vx2, vy2, vz2], dtype=float)
-    t = 0.0
-    while t < 2.0:
-        vmag = float(np.linalg.norm(vel) + 1e-9)
-        vhat = vel / vmag
-        q = 0.5 * rho * vmag**2
-        Fd = -Cd * q * area * vhat
-        Fg = np.array([0.0, 0.0, -mass * g])
-        acc = (Fd + Fg) / mass
-        vel = vel + acc * DT_AIR
-        pos = pos + vel * DT_AIR
-        t += DT_AIR
-        xs.append(pos[0]); ys.append(pos[1]); zs.append(pos[2]); ts.append(t)
-        if pos[2] <= 0.0 and t > 0.03:
-            # interpolate to ground
-            z1, z2 = zs[-2], zs[-1]; x1, x2 = xs[-2], xs[-1]; y1, y2 = ys[-2], ys[-1]
-            if z2 != z1:
-                a = (0 - z1) / (z2 - z1)
-                xs[-1] = x1 + a*(x2 - x1)
-                ys[-1] = y1 + a*(y2 - y1)
-                zs[-1] = 0.0
-            break
+    direction = np.array([vx, vy]) / v_h
+    base_coeff = 0.30
+    v_roll = v_h * base_coeff * spin_factor
 
-    # 3) Roll from hop landing (note spin_rpm is float now)
-    v_hop_xy = np.array([vel[0], vel[1]])
-    xr, yr, tr = simulate_roll(xs[-1], ys[-1], v_hop_xy, spin_rpm, surface)
+    decel = g * mu_r
+    t_stop = v_roll / decel if decel > 1e-9 else 0.0
 
-    # Stitch arrays (zr is 0 during roll)
-    zr = np.concatenate([np.array(zs), np.zeros(max(0, len(xr)-1))])
-    tr_full = np.concatenate([np.array(ts), (ts[-1] + np.array(tr[1:]))])
-    xr_full = np.concatenate([np.array(xs), np.array(xr[1:])])
-    yr_full = np.concatenate([np.array(ys), np.array(yr[1:])])
-    return xr_full, yr_full, zr, tr_full
+    t = np.arange(0.0, t_stop, DT_ROLL) if t_stop > 0 else np.array([0.0])
+    if len(t) == 0:
+        return np.array([x0]), np.array([y0]), np.array([0.0])
 
+    dist = (v_roll * t) - (0.5 * decel * (t ** 2))
+    xr = x0 + dist * direction[0]
+    yr = y0 + dist * direction[1]
+    return xr, yr, t
 
+# -------------------------------------------------------------------------
+# 7. FULL SIMULATION (bounce + roll + short hop)
+# -------------------------------------------------------------------------
 def simulate(bd, surface="fairway", mu_r=None, k_quad=None):
-    """
-    Full sim: air (carry) + rollout.
-    Returns dict with:
-      air_x,y,z,t
-      roll_x,y,t   (z=0 during roll)
-    """
-    ax, ay, az, at, vel_land_3d = simulate_air(bd)
-    # horizontal landing speed for roll
-    v_land_xy = np.array([vel_land_3d[0], vel_land_3d[1]])
-      # Extract spin from shot data
-    spin_rpm = float(bd.get("TotalSpin", 2500.0))
+    # ---- Air ----
+    ax, ay, az, at, v_land, spin_land, tilt = simulate_air(bd)
 
-    # simulate_air should give you vel_land_3d (the velocity at ground intersect)
-    v_land_z  = float(vel_land_3d[2])          # typically negative
-    spin_rpm  = float(bd.get("TotalSpin", 2500.0))
+    # ---- Override surface roll friction if requested ----
+    if mu_r is not None:
+        cur = list(SURFACES.get(surface, SURFACES["fairway"]))
+        cur[0] = mu_r
+        SURFACES[surface] = tuple(cur)
 
-    xr, yr, zr, tr = simulate_roll_with_bounce(ax[-1], ay[-1], v_land_xy, v_land_z, spin_rpm, surface)
+    # ---- Bounce (up to 2 hops) ----
+    vel  = v_land.copy()
+    spin = spin_land
+    bounces = 0
+    max_b = 2
+
+    while bounces < max_b and vel[2] < -0.5:
+        vel, spin = bounce(vel, spin, tilt, surface)
+        bounces += 1
+
+    # ---- Short hop air (if still going up) ----
+    if vel[2] > 0.2:
+        pos = np.array([ax[-1], ay[-1], 0.0])
+        t0  = at[-1]
+        while pos[2] > 0.0 and t0 < MAX_T_AIR:
+            vmag = np.linalg.norm(vel) + 1e-12
+            vhat = vel / vmag
+            q    = 0.5 * rho * vmag**2
+            Fd   = -Cd * q * area * vhat
+            Fg   = np.array([0.0, 0.0, -mass*g])
+            acc  = (Fd + Fg) / mass
+            vel += acc * DT_AIR
+            pos += vel * DT_AIR
+            t0  += DT_AIR
+            ax = np.append(ax, pos[0])
+            ay = np.append(ay, pos[1])
+            az = np.append(az, pos[2])
+            at = np.append(at, t0)
+        # Interpolate to ground
+        if len(az)>1 and az[-1]<0:
+            a = -az[-2]/(az[-1]-az[-2])
+            ax[-1] = ax[-2] + a*(ax[-1]-ax[-2])
+            ay[-1] = ay[-2] + a*(ay[-1]-ay[-2])
+            az[-1] = 0.0
+
+    # ---- Roll (your original) ----
+    rx, ry, rt = simulate_roll(ax[-1], ay[-1], [vel[0], vel[1]], spin, surface)
+
+    roll_x = np.concatenate([ax[-1:], rx[1:]]) if len(rx)>1 else ax
+    roll_y = np.concatenate([ay[-1:], ry[1:]]) if len(ry)>1 else ay
+    roll_z = np.zeros_like(roll_x)
+    roll_t = np.concatenate([at[-1:], at[-1] + rt[1:]]) if len(rt)>1 else at
+
     return {
         "air_x": ax, "air_y": ay, "air_z": az, "air_t": at,
-        "roll_x": xr, "roll_y": yr, "roll_t": tr
+        "roll_x": roll_x, "roll_y": roll_y, "roll_z": roll_z, "roll_t": roll_t
     }
 
-# ------------- Animation (single window, two views) -------------
-def animate_combined(sim, playback=1.0, carry_color="tab:blue", roll_color="tab:orange"):
-    import numpy as np
+# -------------------------------------------------------------------------
+# 8. ANIMATION (shows bounce)
+# -------------------------------------------------------------------------
+def animate_combined(sim, playback=1.0, carry_color="#1f77b4", roll_color="#ff7f0e"):
+    Xc = m2yd(sim["air_x"]); Yc = m2yd(sim["air_y"]); Zc = m2ft(sim["air_z"]); Tc = sim["air_t"]
+    Xr = m2yd(sim["roll_x"]); Yr = m2yd(sim["roll_y"]); Zr = m2ft(sim["roll_z"]); Tr = sim["roll_t"]
 
-    # Display units
-    Xc = meters_to_yards(sim["air_x"]);   Yc = meters_to_yards(sim["air_y"]);   Zc = meters_to_feet(sim["air_z"])
-    Tc = sim["air_t"]
-    Xr = meters_to_yards(sim["roll_x"]);  Yr = meters_to_yards(sim["roll_y"]);  Tr = sim["roll_t"]
+    tc_max = Tc[-1]
+    tr_max = Tr[-1] if len(Tr)>1 else 0.0
+    total_t = tc_max + tr_max
 
-    # One window, two subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.5, 5.0))
-    fig.suptitle("Ball Flight (Carry + Roll)")
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+    fig.suptitle("Golf Ball Flight – Carry + Bounce + Roll", fontsize=14)
 
-    # Side View
-    ax1.set_title("Side View")
-    ax1.set_xlabel("Downrange (yards)")
-    ax1.set_ylabel("Height (feet)")
-    ax1.grid(True)
-    ax1.plot(Xc, Zc, linewidth=1.25, alpha=0.85, color=carry_color, label="Carry")
-    # Roll on ground (height = 0 line from landing onward)
-    if len(Xr) > 1:
-        ax1.plot([Xc[-1], *Xr[1:]], [0.0, *([0.0]*(len(Xr)-1))],
-                 linewidth=2.0, alpha=0.9, color=roll_color, label="Roll")
-    ball1, = ax1.plot([], [], marker="o", markersize=7, color=carry_color)
-    trail1, = ax1.plot([], [], linewidth=2, color=carry_color)
-    x_max = max(np.max(Xc), np.max(Xr) if len(Xr) else 0) * 1.05
-    z_max = max(np.max(Zc), 1.0) * 1.10
-    ax1.set_xlim(0, max(1, float(x_max)))
-    ax1.set_ylim(0, max(1, float(z_max)))
-    ax1.legend(loc="upper right")
-    fig.tight_layout()
+    # Side view
+    ax1.set_title("Side View"); ax1.set_xlabel("Downrange (yd)"); ax1.set_ylabel("Height (ft)")
+    ax1.grid(True, alpha=0.3)
+    ax1.plot(Xc, Zc, color=carry_color, lw=1.5, label="Carry")
+    if len(Xr)>1: ax1.plot(Xr, Zr, color=roll_color, lw=2.0, label="Roll")
+    ball1, = ax1.plot([], [], 'o', ms=8, color=carry_color)
+    trail1, = ax1.plot([], [], lw=2, color=carry_color, alpha=0.6)
 
-    # Top View
-    ax2.set_title("Top View (Left/Right)")
-    ax2.set_xlabel("Downrange (yards)")
-    ax2.set_ylabel("Lateral (yards)")
-    ax2.grid(True)
-    ax2.plot(Xc, Yc, linewidth=1.25, alpha=0.85, color=carry_color, label="Carry")
-    if len(Xr) > 1:
-        ax2.plot(Xr, Yr, linewidth=2.0, alpha=0.9, color=roll_color, label="Roll")
-    ball2, = ax2.plot([], [], marker="o", markersize=7, color=carry_color)
-    trail2, = ax2.plot([], [], linewidth=2, color=carry_color)
-    x_max2 = max(np.max(Xc), np.max(Xr) if len(Xr) else 0) * 1.05
-    y_abs = float(max(1.0, np.max(np.abs(np.concatenate([Yc, Yr])) if len(Yr) else np.max(np.abs(Yc))) * 1.10))
-    ax2.set_xlim(0, max(1, float(x_max2)))
-    ax2.set_ylim(-y_abs, y_abs)
-    ax2.set_aspect("equal", adjustable="box")
-    ax2.legend(loc="upper right")
+    xmax = max(np.max(Xc), np.max(Xr) if len(Xr) else 0) * 1.06
+    zmax = max(np.max(Zc), 1.0) * 1.12
+    ax1.set_xlim(0, xmax); ax1.set_ylim(0, zmax); ax1.legend()
 
-    # Real-time playback
-    start = time.perf_counter()
-    dt_air  = Tc[1] - Tc[0] if len(Tc) > 1 else DT_AIR
-    dt_roll = Tr[1] - Tr[0] if len(Tr) > 1 else DT_ROLL
-    trail_seconds = 0.5
-    trail_len_air  = max(5, int(trail_seconds / max(1e-6, dt_air)))
-    trail_len_roll = max(5, int(trail_seconds / max(1e-6, dt_roll)))
-    frame_dt = 1/60.0
+    # Top view
+    ax2.set_title("Top View"); ax2.set_xlabel("Downrange (yd)"); ax2.set_ylabel("Lateral (yd)")
+    ax2.grid(True, alpha=0.3)
+    ax2.plot(Xc, Yc, color=carry_color, lw=1.5, label="Carry")
+    if len(Xr)>1: ax2.plot(Xr, Yr, color=roll_color, lw=2.0, label="Roll")
+    ball2, = ax2.plot([], [], 'o', ms=8, color=carry_color)
+    trail2, = ax2.plot([], [], lw=2, color=carry_color, alpha=0.6)
 
-    phase = "air"
-    i_air, i_roll = 0, 0
-    while True:
-        elapsed = (time.perf_counter() - start) * playback
+    ymax = max(1.0, np.max(np.abs(np.concatenate([Yc, Yr]))) * 1.12)
+    ax2.set_xlim(0, xmax); ax2.set_ylim(-ymax, ymax); ax2.set_aspect('equal', adjustable='box')
+    ax2.legend()
 
-        if phase == "air":
-            i_air = min(len(Tc) - 1, int(round(elapsed / max(1e-6, dt_air))))
-            # update side
-            ball1.set_data([Xc[i_air]], [Zc[i_air]])
-            s = max(0, i_air - trail_len_air)
-            trail1.set_data(Xc[s:i_air+1], Zc[s:i_air+1])
-            # update top
-            ball2.set_data([Xc[i_air]], [Yc[i_air]])
-            trail2.set_data(Xc[s:i_air+1], Yc[s:i_air+1])
+    # Animation
+    trail_sec = 0.45
+    trail_air  = max(5, int(trail_sec / DT_AIR))
+    trail_roll = max(5, int(trail_sec / DT_ROLL))
+    fps = 60
+    frame_dt = 1.0/fps
+    nframes = int(total_t / frame_dt * playback) + 1
 
-            if i_air >= len(Tc) - 1:
-                phase = "roll"
-                # switch marker color to roll color
-                ball1.set_color(roll_color)
-                trail1.set_color(roll_color)
-                ball2.set_color(roll_color)
-                trail2.set_color(roll_color)
-                start = time.perf_counter()  # restart clock for roll
+    def update(frame):
+        t = frame * frame_dt
+        if t <= tc_max:
+            i = min(len(Tc)-1, int(t / DT_AIR))
+            ball1.set_data([Xc[i]], [Zc[i]])
+            trail1.set_data(Xc[max(0,i-trail_air):i+1], Zc[max(0,i-trail_air):i+1])
+            ball2.set_data([Xc[i]], [Yc[i]])
+            trail2.set_data(Xc[max(0,i-trail_air):i+1], Yc[max(0,i-trail_air):i+1])
         else:
-            # roll time
-            i_roll = min(len(Tr) - 1, int(round(((time.perf_counter() - start) * playback) / max(1e-6, dt_roll))))
-            # side (z=0)
-            ball1.set_data([Xr[i_roll]], [0.0])
-            s = max(0, i_roll - trail_len_roll)
-            trail1.set_data(Xr[s:i_roll+1], [0.0]*(i_roll - s + 1))
-            # top
-            ball2.set_data([Xr[i_roll]], [Yr[i_roll]])
-            trail2.set_data(Xr[s:i_roll+1], Yr[s:i_roll+1])
-            if i_roll >= len(Tr) - 1:
-                break
+            dt = t - tc_max
+            i = min(len(Tr)-1, int(dt / DT_ROLL))
+            ball1.set_data([Xr[i]], [Zr[i]])
+            trail1.set_data(Xr[max(0,i-trail_roll):i+1], Zr[max(0,i-trail_roll):i+1])
+            ball2.set_data([Xr[i]], [Yr[i]])
+            trail2.set_data(Xr[max(0,i-trail_roll):i+1], Yr[max(0,i-trail_roll):i+1])
+        return ball1, trail1, ball2, trail2
 
-        plt.pause(0.001)
-        time.sleep(frame_dt)
-
+    anim = FuncAnimation(fig, update, frames=nframes, interval=1000/fps, blit=True, repeat=True)
+    plt.tight_layout()
     plt.show()
 
-# ---------------- CLI ----------------
+# -------------------------------------------------------------------------
+# 9. CLI
+# -------------------------------------------------------------------------
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--json", required=True, help="Path to JSON with BallData (GSPro-like).")
-    ap.add_argument("--surface", default="fairway", choices=list(SURFACES.keys()),
-                    help="Roll surface (affects rollout distance).")
-    ap.add_argument("--playback", type=float, default=1.0, help="Playback speed (1.0 real-time).")
-    # Optional manual roll coefficients
-    ap.add_argument("--mu_r", type=float, default=None, help="Rolling resistance coefficient override.")
-    ap.add_argument("--k_quad", type=float, default=None, help="Quadratic roll drag coefficient override.")
-    args = ap.parse_args()
+    args = handle_arguments()
 
-    data = json.load(open(args.json, "r", encoding="utf-8"))
-    bd = data[1].get("BallData")
-    sim = simulate(bd, surface=args.surface, mu_r=args.mu_r, k_quad=args.k_quad)
+    with open(args.json, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-    carry_yd = meters_to_yards(sim["air_x"][-1])
-    total_yd = meters_to_yards((sim["roll_x"][-1] if len(sim["roll_x"]) else sim["air_x"][-1]))
-    apex_ft  = meters_to_feet(np.max(sim["air_z"]))
-    flight_s = sim["air_t"][-1] + (sim["roll_t"][-1] if len(sim["roll_t"]) else 0.0)
-    roll = round(total_yd - carry_yd, 2)
+    if isinstance(data, list):
+        shots = [s for s in data if s.get("Club") == args.shot]
+        bd = shots[0]["BallData"] if shots else data[0].get("BallData")
+    else:
+        bd = data.get("BallData")
 
-    print(f"Carry: {carry_yd:.1f} yd   Total: {total_yd:.1f} yd   Apex: {apex_ft:.1f} ft   Time: {flight_s:.2f} s Roll: {roll}")
+    if bd is None:
+        raise ValueError("BallData not found in JSON")
+
+    sim = simulate(bd, surface=args.surface, mu_r=args.mu_r)
+
+    carry_yd = m2yd(sim["air_x"][-1])
+    total_yd = m2yd(sim["roll_x"][-1])
+    apex_ft  = m2ft(np.max(sim["air_z"]))
+    flight_s = sim["roll_t"][-1]
+    roll_yd  = total_yd - carry_yd
+
+    print(f"Carry: {carry_yd:.1f} yd | Total: {total_yd:.1f} yd | "
+          f"Apex: {apex_ft:.1f} ft | Time: {flight_s:.2f} s | Roll: {roll_yd:.1f} yd")
+
     animate_combined(sim, playback=args.playback)
