@@ -5,11 +5,11 @@
     "Club": "driver",
     "ShotNumber": 1,
     "BallData": {
-      "Speed": 221.5,
-      "SpinAxis": -2.8,
-      "TotalSpin": 2200,
-      "HLA": -9,
-      "VLA": 1.5
+      "Speed": 127.8635,
+      "SpinAxis": 0,
+      "TotalSpin": 2296,
+      "HLA": 4.72,
+      "VLA": 13.47
     },
     "ClubData": {
       "Speed": 113.5,
@@ -74,11 +74,11 @@
     "Club": "7i",
     "ShotNumber": 4,
     "BallData": {
-      "Speed": 132.0,
-      "SpinAxis": -0.9,
-      "TotalSpin": 6200,
-      "HLA": 0.1,
-      "VLA": 18.5
+      "Speed": 112.4733,
+      "SpinAxis": 7.77,
+      "TotalSpin": 4567,
+      "HLA": 3.78,
+      "VLA": 19.7
     },
     "ClubData": {
       "Speed": 85.0,
@@ -143,11 +143,11 @@
     "Club": "sw",
     "ShotNumber": 7,
     "BallData": {
-      "Speed": 95.0,
-      "SpinAxis": 2.5,
-      "TotalSpin": 10500,
-      "HLA": 0.8,
-      "VLA": 30.2
+      "Speed": 67.89113,
+      "SpinAxis": 0,
+      "TotalSpin": 8344,
+      "HLA": 1.85,
+      "VLA": 31.89
     },
     "ClubData": {
       "Speed": 66.0,

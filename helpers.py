@@ -1,5 +1,6 @@
 import argparse
 
+
 SURFACES = {
     # mu_r (rolling friction), k_quad (quadratic drag), e_n (restitution), mu_t (tangential friction)
     "rough":   (0.060, 0.0006, 0.20, 0.50),
@@ -7,6 +8,7 @@ SURFACES = {
     "firm":    (0.020, 0.0002, 0.50, 0.25),
     "green":   (0.015, 0.00015, 0.25, 0.20),
 }
+
 
 def handle_arguments():
     ap = argparse.ArgumentParser()
