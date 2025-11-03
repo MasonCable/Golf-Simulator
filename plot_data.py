@@ -39,11 +39,29 @@ class PlotData:
         return np.array([self.interp_y(x, X, Y) for x in np.asarray(x_arr)], dtype=float)
 
     def build_lateral_curve(self, total_yd, hla_deg, offline_yd, x_samples):
-        b = math.tan(self.deg2rad(hla_deg))
-        a = (offline_yd - b * total_yd) / (total_yd**2) if total_yd > 0 else 0.0
+        """
+        Build lateral (Y) path.
+        - hla_deg: positive = right
+        - offline_yd: positive = right
+        """
+        if total_yd <= 0:
+            return np.zeros_like(x_samples)
+
+        # Convert to radians
+        hla_rad = self.deg2rad(hla_deg)
+        target_y_at_total = offline_yd  # final Y position
+
+        # Initial slope = tan(HLA)
+        initial_slope = math.tan(hla_rad)
+
+        # Quadratic term to hit final Y
+        a = (target_y_at_total - initial_slope * total_yd) / (total_yd ** 2)
+        b = initial_slope
+
         y = a * x_samples**2 + b * x_samples
-        if len(y): y[-1] = offline_yd
-        return y
+        if len(y) > 0:
+            y[-1] = target_y_at_total  # Force final point
+        return -y
 
     # ————————————————————————————————————————————————————————————————
     # Build paths from JSON
