@@ -22,7 +22,8 @@ signal.signal(signal.SIGTERM, _cleanup)
 async def main():
     global _sim_instance
     args = handle_arguments()
-    sim = run_simulate_data_stream(args.json, delay=10.0)
+    shotArg = args.shot if args.shot else None    
+    sim = run_simulate_data_stream(args.json, delay=20.0, shot=shotArg)
     if not sim: return
     _sim_instance = sim
     print("Simulator started – waiting for shots...")
@@ -40,6 +41,7 @@ async def main():
     finally:
         sim.stop()
         print("Done.")
+        print(shotArg)
 
 if __name__ == "__main__":
     try:

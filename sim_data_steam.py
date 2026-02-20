@@ -114,7 +114,7 @@ class SquareSimulator:
 # ----------------------------------------------------------------------
 # Helper – load + return live object
 # ----------------------------------------------------------------------
-def run_simulate_data_stream(json_file: str, delay: float = 10.0):
+def run_simulate_data_stream(json_file: str, delay: float = 10.0, shot: str = None):
     """
     Load shots, start WebSocket + UDP, and return the live simulator.
     """
@@ -122,6 +122,8 @@ def run_simulate_data_stream(json_file: str, delay: float = 10.0):
     try:
         with open(json_file, "r", encoding="utf-8") as f:
             data = json.load(f)
+            if shot is not None:
+                data = [s for s in data if s.get("Club") == shot]
         if not isinstance(data, list):
             raise ValueError("JSON root must be an array")
         required = {"BallSpeed", "VLA", "HLA", "BackSpin", "SideSpin"}

@@ -17,5 +17,5 @@ def handle_arguments():
     ap.add_argument("--playback", type=float, default=1.0, help="Playback speed (1.0 real-time).")
     ap.add_argument("--mu_r", type=float, default=None, help="Rolling resistance coefficient override.")
     ap.add_argument("--k_quad", type=float, default=None, help="Quadratic roll drag coefficient override.")
-    ap.add_argument("--shot", type=str, default="driver", help="Driver, wedge, i9-i1")
+    ap.add_argument("--shot", type=str, help="Driver, wedge, i9-i1")
     return ap.parse_args()
